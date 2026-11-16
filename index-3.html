@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Baseball Score Tracker</title>
+<style>
+:root{--navy:#142b4a;--blue:#2463a6;--green:#16845b;--bg:#f3f6fa;--line:#dce4ee;--muted:#64748b}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:#172337}
+header{background:var(--navy);color:white;padding:18px 16px;text-align:center}header h1{margin:0;font-size:1.55rem}header p{margin:5px 0 0;color:#d8e5f5;font-size:.9rem}
+nav{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;background:white;padding:10px;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}
+button,.btn{border:0;border-radius:9px;padding:10px 13px;background:var(--blue);color:white;font-weight:650;cursor:pointer;font-size:.94rem}
+button.secondary{background:#e8eef6;color:#20344e}button.danger{background:#b93838}button.green{background:var(--green)}button:disabled{opacity:.4;cursor:not-allowed}
+main{max-width:1050px;margin:18px auto;padding:0 13px 40px}.page{display:none}.page.active{display:block}
+.card{background:white;border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 2px 8px #17233708}
+h2{font-size:1.15rem;margin:0 0 13px;color:var(--navy)}h3{font-size:1rem;margin:0 0 10px}
+.scoreboard{display:grid;grid-template-columns:1fr 1fr;gap:12px}.team-score{text-align:center;border:1px solid var(--line);border-radius:12px;padding:14px}.team-score input{width:100%;font-size:1.05rem;font-weight:700;text-align:center;border:1px solid transparent;border-bottom:1px solid var(--line);padding:7px;color:var(--navy)}
+.score{font-size:3rem;font-weight:800;margin:3px 0;color:var(--navy)}.controls{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}.controls button{min-width:48px}
+.status{display:flex;justify-content:center;align-items:center;gap:12px;flex-wrap:wrap;text-align:center}.pill{display:inline-block;background:#eaf1fa;color:#193b63;padding:8px 13px;border-radius:30px;font-weight:750}.outs{font-size:1.3rem;font-weight:800;color:#a43a32}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{display:flex;gap:8px;align-items:center;flex-wrap:wrap}input[type=text],input[type=number]{padding:10px;border:1px solid #cbd5e1;border-radius:8px;min-width:0;font:inherit}input[type=text]{width:100%}
+.roster-row{display:flex;gap:7px;margin:7px 0;align-items:center}.roster-row input{flex:1}.roster-row button{padding:8px 10px}
+.batter-box{border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px}.batter-box.current{border:2px solid var(--green);background:#effaf5}.batter-box.ondeck{border:2px solid #e2a52d;background:#fff9e9}.tag{font-size:.72rem;font-weight:800;text-transform:uppercase;color:var(--green)}.tag.deck{color:#98630b}
+.small{font-size:.85rem;color:var(--muted)}.history-item{border-bottom:1px solid var(--line);padding:12px 0}.history-item:last-child{border:0}
+.notice{background:#fff7df;border:1px solid #f0d68b;padding:11px;border-radius:9px;color:#664b08;font-size:.9rem}
+@media(max-width:650px){.grid2{grid-template-columns:1fr}.score{font-size:2.5rem}main{margin-top:12px}.card{padding:13px}}
+</style>
+</head>
+<body>
+<header><h1>⚾ Baseball Score Tracker</h1><p>Score, innings, outs and batting order</p></header>
+<nav id="nav"><button data-page="game">Game</button><button class="secondary" data-page="teams">Teams & Lineups</button><button class="secondary" data-page="history">Game History</button></nav>
+<main>
+<section id="game" class="page active">
+ <div class="card">
+  <h2>Scoreboard</h2>
+  <div class="scoreboard">
+   <div class="team-score"><input id="name0" aria-label="Home team name"><div class="score" id="score0">0</div><div class="controls"><button class="green" onclick="changeScore(0,1)">+1 Run</button><button class="secondary" onclick="changeScore(0,-1)">−1 Undo</button></div></div>
+   <div class="team-score"><input id="name1" aria-label="Away team name"><div class="score" id="score1">0</div><div class="controls"><button class="green" onclick="changeScore(1,1)">+1 Run</button><button class="secondary" onclick="changeScore(1,-1)">−1 Undo</button></div></div>
+  </div>
+ </div>
+ <div class="card">
+  <h2>Inning Status</h2>
+  <div class="status"><span class="pill" id="inningLabel">Inning 1</span><span class="pill" id="halfLabel">Top</span><span class="pill outs" id="outsLabel">0 Outs</span></div>
+  <p class="small" style="text-align:center">Three outs in the top half moves to the bottom. Three outs in the bottom half moves to the next inning.</p>
+  <div class="controls"><button class="green" onclick="changeOuts(1)">+1 Out</button><button class="secondary" onclick="changeOuts(-1)">−1 Undo Out</button><button class="secondary" onclick="resetOuts()">Reset Outs to 0</button></div>
+  <hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
+  <div class="controls"><button class="green" onclick="changeInning(1)">+1 Inning</button><button class="secondary" onclick="changeInning(-1)">−1 Inning</button><button class="secondary" onclick="toggleHalf()">Switch Top / Bottom</button></div>
+ </div>
+ <div class="card">
+  <h2>At Bat</h2><div class="grid2" id="batterSummary"></div>
+ </div>
+ <div class="card">
+  <div class="controls"><button class="green" onclick="endGame()">End Game & Save Results</button><button class="secondary" onclick="shareView()">Copy View-Only Link</button><button class="danger" onclick="newGame()">New Game</button></div>
+  <p class="small" id="shareMessage" style="text-align:center"></p>
+ </div>
+</section>
+<section id="teams" class="page">
+ <div class="card"><h2>Team Lineups</h2><p class="small">Add players in batting order. Select any player as the current batter; the next player in the list becomes on deck. Changes save to the shared AWS database.</p><div class="grid2" id="teamEditors"></div></div>
+</section>
+<section id="history" class="page">
+ <div class="card"><h2>Game History</h2><div id="historyList"></div><div class="controls"><button class="danger" onclick="clearHistory()">Clear History</button></div></div>
+</section>
+<section id="view" class="page">
+ <div class="card"><h2>⚾ Live Game View</h2><p class="small">Read-only scoreboard shared by the game tracker.</p><div class="scoreboard" id="viewScores"></div></div>
+ <div class="card"><h2>Inning Status</h2><div class="status" id="viewStatus"></div></div>
+ <div class="card"><h2>Batting Order</h2><div class="grid2" id="viewBatters"></div></div>
+ <p class="notice">Live read-only scoreboard. Updates are refreshed from the shared AWS database approximately every 5 seconds.</p>
+</section>
+</main>
+<script>
+const defaults=()=>({teams:[{name:"Home",score:0,roster:[],current:0},{name:"Away",score:0,roster:[],current:0}],inning:1,half:"Top",outs:0});
+const params=new URLSearchParams(location.search);
+const VIEW_ONLY=params.get("view")==="1";
+const GAME_ID=params.get("gameId")||"main";
+let API_BASE=(params.get("api")||localStorage.getItem("sportsTrackerApi")||"").replace(/\/$/,"");
+let ADMIN_TOKEN=localStorage.getItem("sportsTrackerAdminToken")||"";
+let VIEWER_TOKEN=params.get("token")||localStorage.getItem("sportsTrackerViewerToken")||"";
+let state=defaults(), applyingRemote=false, saveTimer=null, lastRemoteJson="";
+
+async function configureAws(){
+ if(!API_BASE&&!VIEW_ONLY){API_BASE=prompt("Paste your AWS API Gateway URL (ApiUrl output from deployment):")||"";if(API_BASE){API_BASE=API_BASE.replace(/\/$/,"");localStorage.setItem("sportsTrackerApi",API_BASE)}}
+ if(!API_BASE){alert("AWS API URL is missing. Paste the ApiUrl output from your AWS deployment.");return false}
+ if(!VIEW_ONLY&&!ADMIN_TOKEN){ADMIN_TOKEN=prompt("Enter the Sports Tracker scorer/admin token:")||"";if(ADMIN_TOKEN){localStorage.setItem("sportsTrackerAdminToken",ADMIN_TOKEN)}}
+ if(!VIEW_ONLY&&!ADMIN_TOKEN){alert("The scorer/admin token is required to update games.");return false}
+ if(!VIEW_ONLY&&!VIEWER_TOKEN){VIEWER_TOKEN=prompt("Enter the Sports Tracker viewer/share token:")||"";if(VIEWER_TOKEN)localStorage.setItem("sportsTrackerViewerToken",VIEWER_TOKEN)}
+ if(!VIEW_ONLY&&!VIEWER_TOKEN){alert("The viewer/share token is required to create view-only links.");return false}
+ if(VIEW_ONLY&&!VIEWER_TOKEN){alert("This view-only link is missing its access token.");return false}
+ return true;
+}
+function apiUrl(path){return API_BASE+path}
+async function apiRequest(path,options={}){
+ const headers={...(options.headers||{})};
+ if(ADMIN_TOKEN)headers.Authorization="Bearer "+ADMIN_TOKEN;
+ if(options.body)headers["Content-Type"]="application/json";
+ const res=await fetch(apiUrl(path),{...options,headers,cache:"no-store"});
+ let data={};try{data=await res.json()}catch(e){}
+ if(!res.ok)throw new Error(data.error||("AWS API request failed ("+res.status+")"));
+ return data;
+}
+function save(){if(applyingRemote||!API_BASE||VIEW_ONLY||!ADMIN_TOKEN)return;clearTimeout(saveTimer);saveTimer=setTimeout(pushToAws,350)}
+async function pushToAws(){
+ try{const result=await apiRequest("/games/"+encodeURIComponent(GAME_ID),{method:"PUT",body:JSON.stringify({state})});lastRemoteJson=JSON.stringify(state);const el=document.getElementById("shareMessage");if(el)el.textContent="Saved to AWS."}
+ catch(e){console.error(e);const el=document.getElementById("shareMessage");if(el)el.textContent="AWS save failed: "+e.message}
+}
+async function pullFromAws(){
+ if(!API_BASE)return;
+ try{
+  const suffix=VIEW_ONLY?"?token="+encodeURIComponent(VIEWER_TOKEN):"";
+  const data=await apiRequest("/games/"+encodeURIComponent(GAME_ID)+suffix,{method:"GET"});
+  if(data&&data.state){const incoming=JSON.stringify(data.state);if(incoming!==lastRemoteJson){applyingRemote=true;state=data.state;lastRemoteJson=incoming;render();applyingRemote=false}}
+  else if(!VIEW_ONLY&&!lastRemoteJson){lastRemoteJson=JSON.stringify(state);save()}
+ }catch(e){console.warn(e);const el=document.getElementById("shareMessage");if(el&&!VIEW_ONLY)el.textContent="AWS connection issue: "+e.message}
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function render(){
+ state.teams.forEach((t,i)=>{document.getElementById("name"+i).value=t.name;document.getElementById("score"+i).textContent=t.score});
+ document.getElementById("inningLabel").textContent="Inning "+state.inning;document.getElementById("halfLabel").textContent=state.half;document.getElementById("outsLabel").textContent=state.outs+" Outs";
+ renderBatterSummary();renderTeamEditors();save();
+}
+function changeScore(i,d){state.teams[i].score=Math.max(0,state.teams[i].score+d);render()}
+function changeOuts(d){if(d>0){state.outs++;if(state.outs>=3){state.outs=0;if(state.half==="Top")state.half="Bottom";else{state.half="Top";state.inning++}}}else if(state.outs>0)state.outs--;render()}
+function resetOuts(){state.outs=0;render()}
+function changeInning(d){state.inning=Math.max(1,state.inning+d);state.outs=0;render()}
+function toggleHalf(){state.half=state.half==="Top"?"Bottom":"Top";state.outs=0;render()}
+function nextBatter(i){let t=state.teams[i];if(t.roster.length)t.current=(t.current+1)%t.roster.length;render()}
+function batterName(t,idx){return t.roster.length?t.roster[(idx+t.roster.length)%t.roster.length]:"—"}
+function renderBatterSummary(){document.getElementById("batterSummary").innerHTML=state.teams.map((t,i)=>`<div class="batter-box"><h3>${escapeHtml(t.name)}</h3><div><span class="tag">Current batter</span><p><b>${escapeHtml(batterName(t,t.current))}</b></p></div><div><span class="tag deck">On deck</span><p><b>${escapeHtml(batterName(t,t.current+1))}</b></p></div><button class="secondary" onclick="nextBatter(${i})">Move to Next Batter</button></div>`).join("")}
+function renderTeamEditors(){document.getElementById("teamEditors").innerHTML=state.teams.map((t,i)=>`<div class="card"><h3>${escapeHtml(t.name)} Lineup</h3><p class="small">Tap “Set Current” to choose who is batting now.</p><div id="roster${i}">${t.roster.map((p,j)=>`<div class="roster-row"><span style="width:24px">${j+1}.</span><input value="${escapeHtml(p)}" aria-label="Player ${j+1}" onchange="editPlayer(${i},${j},this.value)"><button class="secondary" onclick="setCurrent(${i},${j})">${j===t.current?"Current":"Set Current"}</button><button class="danger" onclick="removePlayer(${i},${j})">×</button></div>`).join("")}</div><div class="field"><input type="text" id="newPlayer${i}" placeholder="Add player name"><button onclick="addPlayer(${i})">Add</button></div><p class="small">${t.roster.length} player(s) · lineup saved automatically</p></div>`).join("")}
+function editPlayer(i,j,v){state.teams[i].roster[j]=v.trim();render()}
+function addPlayer(i){let el=document.getElementById("newPlayer"+i),v=el.value.trim();if(!v)return;state.teams[i].roster.push(v);if(state.teams[i].roster.length===1)state.teams[i].current=0;render()}
+function removePlayer(i,j){let t=state.teams[i];t.roster.splice(j,1);if(!t.roster.length)t.current=0;else if(j<t.current)t.current--;else if(t.current>=t.roster.length)t.current=0;render()}
+function setCurrent(i,j){state.teams[i].current=j;render()}
+document.getElementById("name0").addEventListener("change",e=>{state.teams[0].name=e.target.value.trim()||"Home";render()});
+document.getElementById("name1").addEventListener("change",e=>{state.teams[1].name=e.target.value.trim()||"Away";render()});
+function showPage(id){document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));document.getElementById(id).classList.add("active");document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("secondary",b.dataset.page!==id));if(id==="history")renderHistory()}
+document.querySelectorAll("nav button").forEach(b=>b.addEventListener("click",()=>showPage(b.dataset.page)));
+async function endGame(){
+ const item={date:new Date().toLocaleString(),teams:state.teams.map(t=>({name:t.name,score:t.score})),inning:state.inning,half:state.half,outs:state.outs};
+ try{await apiRequest("/games/"+encodeURIComponent(GAME_ID)+"/history",{method:"POST",body:JSON.stringify({item})});document.getElementById("shareMessage").textContent="Game result saved to AWS history.";await renderHistory();showPage("history")}catch(e){alert("Could not save game history: "+e.message)}
+}
+async function renderHistory(){try{const data=await apiRequest("/games/"+encodeURIComponent(GAME_ID)+"/history",{method:"GET"});const h=data.items||[];document.getElementById("historyList").innerHTML=h.length?h.map(x=>`<div class="history-item"><b>${escapeHtml(x.teams[0].name)} ${x.teams[0].score} – ${x.teams[1].score} ${escapeHtml(x.teams[1].name)}</b><div class="small">${escapeHtml(x.date||x.savedAt||"")} · Inning ${x.inning}, ${escapeHtml(x.half)} · ${x.outs} outs</div></div>`).join(""):'<p class="small">No completed games saved yet.</p>'}catch(e){document.getElementById("historyList").innerHTML='<p class="small">Unable to load AWS game history: '+escapeHtml(e.message)+'</p>'}}
+async function clearHistory(){if(!confirm("Delete all saved game history?"))return;try{await apiRequest("/games/"+encodeURIComponent(GAME_ID)+"/history",{method:"DELETE"});await renderHistory()}catch(e){alert("Could not clear history: "+e.message)}}
+function newGame(){if(!confirm("Start a new game? The current game will be reset. End the game first if you want to save its result."))return;let names=state.teams.map(t=>t.name);state=defaults();state.teams[0].name=names[0];state.teams[1].name=names[1];render();showPage("game")}
+function shareView(){const url=location.href.split("?")[0]+"?view=1&gameId="+encodeURIComponent(GAME_ID)+"&api="+encodeURIComponent(API_BASE)+"&token="+encodeURIComponent(VIEWER_TOKEN||window.SPORTS_TRACKER_VIEWER_TOKEN||"");const msg=document.getElementById("shareMessage");if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(url).then(()=>msg.textContent="Live view-only link copied. Share it with viewers.").catch(()=>prompt("Copy this live view-only link:",url))}else prompt("Copy this live view-only link:",url)}
+function renderLiveView(){document.getElementById("nav").style.display="none";document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));document.getElementById("view").classList.add("active");const s=state;document.getElementById("viewScores").innerHTML=s.teams.map(t=>`<div class="team-score"><h3>${escapeHtml(t.name)}</h3><div class="score">${t.score}</div></div>`).join("");document.getElementById("viewStatus").innerHTML=`<span class="pill">Inning ${s.inning}</span><span class="pill">${escapeHtml(s.half)}</span><span class="pill outs">${s.outs} Outs</span>`;document.getElementById("viewBatters").innerHTML=s.teams.map(t=>`<div class="batter-box"><h3>${escapeHtml(t.name)}</h3><span class="tag">Current batter</span><p><b>${escapeHtml(batterName(t,t.current))}</b></p><span class="tag deck">On deck</span><p><b>${escapeHtml(batterName(t,t.current+1))}</b></p></div>`).join("")}
+async function boot(){
+ if(VIEW_ONLY){document.getElementById("nav").style.display="none";document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));document.getElementById("view").classList.add("active")}else{document.getElementById("view").classList.remove("active");showPage("game")}
+ if(!(await configureAws()))return;
+ await pullFromAws();if(VIEW_ONLY)renderLiveView();else render();
+ setInterval(async()=>{await pullFromAws();if(VIEW_ONLY)renderLiveView()},5000);
+}
+const originalRender=render;render=function(){originalRender();if(VIEW_ONLY)renderLiveView()};
+boot();
+</script>
+</body></html>
