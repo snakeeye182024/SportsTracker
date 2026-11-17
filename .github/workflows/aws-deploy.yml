@@ -1,0 +1,55 @@
+name: AWS backend deployment (approval required)
+on:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/aws-deploy.yml'
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type DEPLOY to request a production deployment'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate backend template
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require reviewed backend source
+        run: |
+          test -f backend/template.yaml || { echo "::error::backend/template.yaml is not yet committed. Import and review the existing AWS stack before deployment."; exit 1; }
+      - uses: aws-actions/setup-sam@v2
+      - run: sam validate --template-file backend/template.yaml --lint
+
+  deploy:
+    name: Deploy to AWS after approval
+    needs: validate
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.confirmation == 'DEPLOY' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+    concurrency:
+      group: sports-tracker-production-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-2
+          role-session-name: sports-tracker-github-deploy
+      - uses: aws-actions/setup-sam@v2
+      - name: Confirm AWS identity
+        run: aws sts get-caller-identity
+      - name: Deploy reviewed SAM template
+        run: |
+          sam build --template-file backend/template.yaml
+          sam deploy --template-file .aws-sam/build/template.yaml --stack-name sports-tracker-v2 --region us-east-2 --resolve-s3 --no-confirm-changeset --no-fail-on-empty-changeset --capabilities CAPABILITY_IAM
