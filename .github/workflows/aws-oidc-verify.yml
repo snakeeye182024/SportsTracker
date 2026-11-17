@@ -1,0 +1,37 @@
+name: Verify AWS OIDC connection (no deployment)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify AWS identity only
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Configure temporary AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-2
+          role-session-name: sports-tracker-oidc-verification
+      - name: Verify expected AWS account and assumed role
+        shell: bash
+        run: |
+          set -euo pipefail
+          IDENTITY="$(aws sts get-caller-identity --output json)"
+          ACCOUNT="$(echo "$IDENTITY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["Account"])')"
+          ARN="$(echo "$IDENTITY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["Arn"])')"
+          test "$ACCOUNT" = "814650855040" || { echo "::error::Unexpected AWS account"; exit 1; }
+          case "$ARN" in
+            arn:aws:sts::814650855040:assumed-role/SportsTrackerGitHubDeploy/*) ;;
+            *) echo "::error::Unexpected IAM role"; exit 1 ;;
+          esac
+          echo "AWS OIDC authentication verified for expected account and deployment role."
+          echo "No AWS resources were modified."
