@@ -17,17 +17,14 @@ jobs:
     steps:
       - name: Diagnose OIDC audience and subject (no token logged)
         shell: bash
-        env:
-          GH_OIDC_REQUEST_URL: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL }}
-          GH_OIDC_REQUEST_TOKEN: ${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}
         run: |
           python3 - <<'PY'
           import os, json, base64, urllib.request
-          url = os.environ["GH_OIDC_REQUEST_URL"]
+          url = os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"]
           separator = "&" if "?" in url else "?"
           request = urllib.request.Request(
               url + separator + "audience=sts.amazonaws.com",
-              headers={"Authorization": "Bearer " + os.environ["GH_OIDC_REQUEST_TOKEN"]}
+              headers={"Authorization": "Bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]}
           )
           with urllib.request.urlopen(request) as response:
               token = json.load(response)["value"]
