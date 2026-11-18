@@ -165,6 +165,34 @@ Resources:
               Ref: HttpApi
             Path: /v1/leagues/{leagueId}/teams/{teamId}/players
             Method: POST
+        GamesList:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/games
+            Method: GET
+        GamesCreate:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/games
+            Method: POST
+        GameGet:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/games/{gameId}
+            Method: GET
+        GameAction:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/games/{gameId}/actions
+            Method: POST
     Metadata:
       SamResourceId: ApiFunction
 Outputs:
