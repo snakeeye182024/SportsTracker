@@ -165,6 +165,48 @@ Resources:
               Ref: HttpApi
             Path: /v1/leagues/{leagueId}/teams/{teamId}/players
             Method: POST
+        LeagueUpdate:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}
+            Method: PUT
+        TeamGet:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/teams/{teamId}
+            Method: GET
+        TeamUpdate:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/teams/{teamId}
+            Method: PUT
+        PlayerUpdate:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/teams/{teamId}/players/{playerId}
+            Method: PUT
+        PlayerContactsGet:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/teams/{teamId}/players/{playerId}/contacts
+            Method: GET
+        PlayerContactsUpdate:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/teams/{teamId}/players/{playerId}/contacts
+            Method: PUT
         GamesList:
           Type: HttpApi
           Properties:
