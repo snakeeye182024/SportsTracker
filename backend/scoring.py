@@ -39,7 +39,7 @@ def apply(game, action, value=None):
         return g
     if action == "reset":
         original = new_game(g["leagueId"], g["homeTeamId"], g["awayTeamId"])
-        original["gameId"] = g["gameId"]
+        original.update({k: g[k] for k in ("PK", "SK", "gameId", "createdAt") if k in g})
         original["revision"] = g["revision"] + 1
         return original
     if g["status"] == "final":
