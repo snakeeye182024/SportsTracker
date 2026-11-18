@@ -23,7 +23,7 @@ This PR is a **preview-only** workflow. The existing backend template and Lambda
 - The workflow uses `--no-execute-changeset`. There is **no execute step**.
 - The existing production stack policy denies CloudFormation updates to `DataTable`, `UserPool`, and `UserPoolClient`; it does not prevent direct changes or stack deletion.
 - `SportsTrackerGitHubDeploy` must not have `cloudformation:ExecuteChangeSet` or stack deletion permissions.
-- The preview may associate a CloudFormation service role with the existing stack via `--role-arn`; this association can persist and affects future stack operations. Review this explicitly before running.
+- The preview intentionally omits `--role-arn` to avoid associating a persistent CloudFormation service role with the existing stack. A separate execution design must review this choice before any deployment.
 - The GitHub environment approval settings are not yet verified.
 - The older pending change set `samcli-deploy1795021746` is not approved for execution.
 - Leave the Sports Tracker 1.0 stack and `index.html` unchanged.
