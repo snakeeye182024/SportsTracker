@@ -1,0 +1,51 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ExistingLambdaReadAndUpdate",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:GetFunction",
+        "lambda:GetFunctionConfiguration",
+        "lambda:UpdateFunctionCode",
+        "lambda:UpdateFunctionConfiguration"
+      ],
+      "Resource": "arn:aws:lambda:us-east-2:814650855040:function:sports-tracker-v2-ApiFunction-Edm4e76HAYIf"
+    },
+    {
+      "Sid": "ExistingHttpApiReadAndUpdate",
+      "Effect": "Allow",
+      "Action": [
+        "apigateway:GET",
+        "apigateway:PATCH",
+        "apigateway:PUT"
+      ],
+      "Resource": [
+        "arn:aws:apigateway:us-east-2::/apis/qtmj4qlqfb",
+        "arn:aws:apigateway:us-east-2::/apis/qtmj4qlqfb/*"
+      ]
+    },
+    {
+      "Sid": "ReadExistingLambdaExecutionRole",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListRolePolicies",
+        "iam:ListAttachedRolePolicies"
+      ],
+      "Resource": "arn:aws:iam::814650855040:role/sports-tracker-v2-ApiFunctionRole-Rs1WrbFAh2VF"
+    },
+    {
+      "Sid": "PassExistingLambdaRoleOnly",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::814650855040:role/sports-tracker-v2-ApiFunctionRole-Rs1WrbFAh2VF",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "lambda.amazonaws.com"
+        }
+      }
+    }
+  ]
+}
