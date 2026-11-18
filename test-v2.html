@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sports Tracker 2.0 TEST | Account</title>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#15263d;background:#f2f6fb}*{box-sizing:border-box}body{margin:0}header{background:#142b4a;color:white;padding:22px;text-align:center}header h1{margin:0}main{max-width:520px;margin:32px auto;padding:0 16px}.card{background:white;border:1px solid #dce4ee;border-radius:16px;padding:24px;box-shadow:0 5px 24px #142b4a12}h2{margin-top:0}label{display:block;font-weight:600;margin:14px 0 5px}input{width:100%;padding:12px;border:1px solid #b9c7d8;border-radius:8px;font:inherit}button{background:#2463a6;color:white;border:0;border-radius:9px;padding:12px 16px;font:inherit;font-weight:650;cursor:pointer}button:disabled{opacity:.6}button.secondary{background:#e8eef6;color:#20344e}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}.tabs button{flex:1}form button{width:100%;margin-top:20px}.muted{color:#607189;font-size:.9rem}#message{margin:14px 0;white-space:pre-wrap}#message.error{color:#a21c28}#message.success{color:#11663f}[hidden]{display:none!important}.actions{display:flex;gap:8px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<header><h1>⚾ Sports Tracker 2.0 — TEST</h1><p>Leagues, teams, rosters and schedules</p></header>
+<main><div class="card">
+<div id="guest">
+<div class="tabs"><button type="button" class="secondary" data-screen="signin">Sign in</button><button type="button" class="secondary" data-screen="signup">Create account</button></div>
+<h2 id="heading">Sign in</h2>
+<p class="muted">Use your email address to manage your leagues.</p>
+<form id="authForm">
+<label for="email">Email</label><input id="email" type="email" autocomplete="email" required>
+<div id="passwordWrap"><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" minlength="8" required></div>
+<div id="codeWrap" hidden><label for="code">Email verification code</label><input id="code" inputmode="numeric" autocomplete="one-time-code"></div>
+<button id="submit" type="submit">Sign in</button>
+</form>
+<div class="actions" style="margin-top:14px"><button class="secondary" type="button" id="forgot">Forgot password?</button><button class="secondary" type="button" id="resend" hidden>Resend code</button></div>
+</div>
+<div id="member" hidden><h2>Welcome to Sports Tracker</h2><p id="identity"></p><p class="muted">Your account is signed in. League dashboard integration is the next development step.</p><p><a href="./test-leagues.html">Open My Leagues</a></p><button id="logout">Sign out</button></div>
+<p id="message" role="status" aria-live="polite"></p>
+<p class="muted"><a href="./index.html">Open existing baseball scoreboard</a></p>
+</div></main>
+<script type="module">
+import { CognitoUserPool, CognitoUser, AuthenticationDetails } from "https://esm.sh/amazon-cognito-identity-js@6.3.15";
+const config={UserPoolId:"us-east-2_LuhkuZQ16",ClientId:"3ie3cgmf6an7irb3ac9jb5htau",ApiUrl:"https://s84557nlgl.execute-api.us-east-2.amazonaws.com"};
+const pool=new CognitoUserPool(config);
+const $=id=>document.getElementById(id);
+let screen="signin",pendingEmail="",busy=false;
+const msg=(text,error=false)=>{const e=$("message");e.textContent=text;e.className=error?"error":"success"};
+const cognitoUser=email=>new CognitoUser({Username:email,Pool:pool});
+function show(next){screen=next;msg("");$("guest").hidden=false;$("member").hidden=true;$("codeWrap").hidden=!["confirm","reset"].includes(next);$("passwordWrap").hidden=next==="confirm";$("password").required=next!=="confirm";$("code").required=["confirm","reset"].includes(next);$("heading").textContent=({signin:"Sign in",signup:"Create account",confirm:"Verify your email",forgot:"Reset password",reset:"Set a new password"})[next];$("submit").textContent=({signin:"Sign in",signup:"Create account",confirm:"Verify email",forgot:"Send reset code",reset:"Change password"})[next];$("resend").hidden=next!=="confirm";$("forgot").hidden=!["signin","forgot"].includes(next);$("password").autocomplete=next==="signup"||next==="reset"?"new-password":"current-password";}
+function signedIn(user){$("guest").hidden=true;$("member").hidden=false;$("identity").textContent=user.getUsername();msg("Signed in successfully.");}
+function refreshSession(){const user=pool.getCurrentUser();if(!user)return;user.getSession((err,session)=>{if(!err&&session?.isValid())signedIn(user)});}
+function setBusy(value){busy=value;$("submit").disabled=value;$("submit").textContent=value?"Please wait…":({signin:"Sign in",signup:"Create account",confirm:"Verify email",forgot:"Send reset code",reset:"Change password"})[screen];}
+function failure(err){msg(err?.message||String(err),true);}
+$("authForm").addEventListener("submit",async e=>{e.preventDefault();if(busy)return;setBusy(true);const email=$("email").value.trim().toLowerCase(),password=$("password").value,code=$("code").value.trim();pendingEmail=email;try{
+if(screen==="signup"){await new Promise((resolve,reject)=>pool.signUp(email,password,[{Name:"email",Value:email}],null,(err,data)=>err?reject(err):resolve(data)));show("confirm");msg("Check your email for a verification code.");}
+else if(screen==="confirm"){await new Promise((resolve,reject)=>cognitoUser(email).confirmRegistration(code,true,(err,data)=>err?reject(err):resolve(data)));show("signin");msg("Email verified. Sign in to continue.");}
+else if(screen==="signin"){const user=cognitoUser(email);await new Promise((resolve,reject)=>user.authenticateUser(new AuthenticationDetails({Username:email,Password:password}),{onSuccess:resolve,onFailure:reject,newPasswordRequired:()=>reject(new Error("Your account requires a new password. Contact an administrator.")),mfaRequired:()=>reject(new Error("Additional verification is required; this screen does not yet support MFA.")),customChallenge:()=>reject(new Error("This account uses an unsupported sign-in challenge."))}));signedIn(user);}
+else if(screen==="forgot"){await new Promise((resolve,reject)=>cognitoUser(email).forgotPassword({onSuccess:resolve,onFailure:reject,inputVerificationCode:resolve}));show("reset");msg("Enter the reset code sent to your email and choose a new password.");}
+else if(screen==="reset"){await new Promise((resolve,reject)=>cognitoUser(email).confirmPassword(code,password,{onSuccess:resolve,onFailure:reject}));show("signin");msg("Password updated. You can now sign in.");}
+}catch(err){if(err?.code==="UserNotConfirmedException"){show("confirm");msg("Please verify your email before signing in.");}else failure(err);}finally{setBusy(false)}});
+document.querySelectorAll("[data-screen]").forEach(b=>b.addEventListener("click",()=>show(b.dataset.screen)));
+$("forgot").addEventListener("click",()=>show("forgot"));
+$("resend").addEventListener("click",()=>{const email=$("email").value.trim().toLowerCase();if(!email){msg("Enter your email first.",true);return;}cognitoUser(email).resendConfirmationCode((err)=>err?failure(err):msg("A new verification code was sent."));});
+$("logout").addEventListener("click",()=>{pool.getCurrentUser()?.signOut();show("signin");msg("Signed out.");});
+show("signin");refreshSession();
+</script>
+</body></html>
