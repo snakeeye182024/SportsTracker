@@ -1,24 +1,29 @@
-# AWS deployment from GitHub Actions
+# AWS GitHub change-set preview (no execution)
 
-## Current status
+This PR is a **preview-only** workflow. The existing backend template and Lambda source are now in `backend/` on `main`. The SAM template has been validated and built in CloudShell, and its eight routes match the live API's methods, paths, and authorization choices. This does not establish code equivalence or guarantee a safe deployment.
 
-This pull request provides the **deployment pipeline and OIDC trust policy**, not an active deployment. The current AWS SAM template and Lambda source are not in this repository. **Do not dispatch the workflow** until the existing `sports-tracker-v2` stack has been reconciled with a reviewed `backend/template.yaml` and source files. A mismatched template can delete or replace existing resources. Sports Tracker 1.0 must remain untouched.
+## AWS configuration
 
-## One-time AWS setup (account 814650855040, region us-east-2)
+- Account: `814650855040`; region: `us-east-2`; stack: `sports-tracker-v2`.
+- GitHub OIDC role: `SportsTrackerGitHubDeploy`. Its trust subject is the account-specific custom claim shown in `infra/github-oidc-trust-policy.json` (confirmed by the OIDC verification workflow).
+- CloudFormation execution role: `SportsTrackerCloudFormationExecution`. **Neither role is yet authorized for deployment until its reviewed IAM policies are attached and tested.**
+- Repository Actions variable: `AWS_DEPLOY_ROLE_ARN=arn:aws:iam::814650855040:role/SportsTrackerGitHubDeploy`.
+- The `production` GitHub environment must be configured with required reviewers, prevent self-review where supported, and limit deployment branches to `main`. **Verify actual approval enforcement**; merely naming an environment does not require review.
 
-1. In AWS IAM > Identity providers, add OpenID Connect provider `https://token.actions.githubusercontent.com` with audience `sts.amazonaws.com`, if it does not already exist.
-2. Create an IAM role named `SportsTrackerGitHubDeploy` with the trust policy in `infra/github-oidc-trust-policy.json`. The role trust is limited to the repository's GitHub `production` environment; no long-lived AWS keys are needed.
-3. Attach a **reviewed least-privilege deployment policy** covering the existing SAM stack, CloudFormation change sets, approved Lambda/API Gateway/DynamoDB/Cognito/SES operations as needed, S3 artifact uploads, and `iam:PassRole` only for approved execution roles. Do **not** attach AdministratorAccess. The required policy depends on the existing CloudFormation template and cannot be safely finalized until that template is available.
-4. In GitHub repository > Settings > Environments, create `production`. Set **Required reviewers** (choose a trusted reviewer), disable self-review if supported, and restrict deployment branches to `main`. GitHub environment protection availability varies by repository visibility and plan. **Verify a run waits for approval** before trusting this workflow for production.
-5. In GitHub repository > Settings > Secrets and variables > Actions > Variables, create `AWS_DEPLOY_ROLE_ARN` with value `arn:aws:iam::814650855040:role/SportsTrackerGitHubDeploy`. This is an ARN, not a secret. If you prefer, scope the variable to the `production` environment instead.
-6. Recover the deployed stack's original SAM template and Lambda code, add them under `backend/`, review a CloudFormation change set and drift before allowing the workflow to deploy to the existing `sports-tracker-v2` stack. Avoid generating a new SAM template from scratch and overwriting existing resources.
-7. Merge a reviewed backend pull request. In GitHub > Actions > **AWS backend deployment (approval required)** > Run workflow, choose `main`, enter `DEPLOY`, then have an authorized reviewer approve the `production` environment deployment.
+## Preview procedure
 
-## Guardrails
+1. Review and merge this PR **only after reviewing the workflow**; merging does not trigger deployment.
+2. Review IAM policies and attach only permissions required for change-set creation and narrowly scoped CloudFormation updates. Do not grant `cloudformation:ExecuteChangeSet` to the GitHub preview role.
+3. From GitHub Actions, manually run **AWS backend change-set preparation (no execution)** on `main` and type `PREVIEW`.
+4. Identify the new change-set ID in the output. Use `aws cloudformation describe-change-set` to inspect the exact resources and details. Only `ApiFunction` and `HttpApi` modifications without replacement are expected for the initial release. If anything else appears, stop.
+5. **Do not execute** the change set until there is a separate approved execution workflow, IAM permissions, and a rollback plan. An approval in this preview workflow is not permission to deploy.
 
-- Pull requests run only validation, never AWS deployment.
-- Production deployment is manual, requires the exact confirmation `DEPLOY`, uses `main`, and is gated by the GitHub `production` environment.
-- OIDC credentials are short-lived and scoped by repository and environment.
-- `environment: production` does **not** by itself enforce approval: you must configure and test Required reviewers in GitHub.
-- The deployment job intentionally fails validation until `backend/template.yaml` exists.
-- Once configured, GitHub Actions manages backend deployment. Runtime manager invitations still require implemented APIs, storage, permissions, and email delivery.
+## Safety notes
+
+- The workflow uses `--no-execute-changeset`. There is **no execute step**.
+- The existing production stack policy denies CloudFormation updates to `DataTable`, `UserPool`, and `UserPoolClient`; it does not prevent direct changes or stack deletion.
+- `SportsTrackerGitHubDeploy` must not have `cloudformation:ExecuteChangeSet` or stack deletion permissions.
+- The preview may associate a CloudFormation service role with the existing stack via `--role-arn`; this association can persist and affects future stack operations. Review this explicitly before running.
+- The GitHub environment approval settings are not yet verified.
+- The older pending change set `samcli-deploy1795021746` is not approved for execution.
+- Leave the Sports Tracker 1.0 stack and `index.html` unchanged.
