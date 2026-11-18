@@ -43,6 +43,52 @@ class LambdaRegressionTests(unittest.TestCase):
         self.db.get_item.return_value = {"Item": self.league}
         self.db.query.return_value = {"Items": []}
 
+
+    def test_owner_can_update_league_season(self):
+        result = app.handler(event("PUT", "/v1/leagues/league-1", body={"name": "Youth League", "season": "Fall 2027"}), None)
+        self.assertEqual(result["statusCode"], 200)
+        self.assertEqual(payload(result)["season"], "Fall 2027")
+        self.db.update_item.assert_called_once()
+
+    def test_non_owner_cannot_update_league(self):
+        result = app.handler(event("PUT", "/v1/leagues/league-1", sub="other-user", body={"name": "Bad"}), None)
+        self.assertEqual(result["statusCode"], 404)
+        self.db.update_item.assert_not_called()
+
+    def test_team_name_can_be_updated(self):
+        self.db.get_item.side_effect = [{"Item": self.league}, {"Item": {"PK": "LEAGUE#league-1", "SK": "TEAM#team-1", "name": "Tigers"}}]
+        result = app.handler(event("PUT", "/v1/leagues/league-1/teams/team-1", body={"name": "Bears"}), None)
+        self.assertEqual(result["statusCode"], 200)
+        self.assertEqual(payload(result)["name"], "Bears")
+
+    def test_parent_contacts_are_separate_from_player_record(self):
+        player = {"PK": "TEAM#team-1", "SK": "PLAYER#player-1", "playerId": "player-1", "name": "Alex"}
+        self.db.get_item.side_effect = [
+            {"Item": self.league},
+            {"Item": {"teamId": "team-1"}},
+            {"Item": player}
+        ]
+        path = "/v1/leagues/league-1/teams/team-1/players/player-1/contacts"
+        result = app.handler(event("PUT", path, body={"contacts": [{"name": "Parent", "email": "parent@example.com", "phone": "555-0100"}]}), None)
+        self.assertEqual(result["statusCode"], 200)
+        saved = self.db.put_item.call_args.kwargs["Item"]
+        self.assertEqual(saved["PK"], "PLAYER#player-1")
+        self.assertEqual(saved["SK"], "CONTACTS")
+        self.assertNotIn("contacts", player)
+
+    def test_non_owner_cannot_read_parent_contacts(self):
+        path = "/v1/leagues/league-1/teams/team-1/players/player-1/contacts"
+        result = app.handler(event("GET", path, sub="other-user"), None)
+        self.assertEqual(result["statusCode"], 404)
+        self.db.put_item.assert_not_called()
+
+    def test_reject_contact_without_name(self):
+        self.db.get_item.side_effect = [{"Item": self.league}, {"Item": {"teamId": "team-1"}}, {"Item": {"playerId": "player-1"}}]
+        path = "/v1/leagues/league-1/teams/team-1/players/player-1/contacts"
+        result = app.handler(event("PUT", path, body={"contacts": [{"email": "parent@example.com"}]}), None)
+        self.assertEqual(result["statusCode"], 400)
+        self.db.put_item.assert_not_called()
+
     def test_health_is_public(self):
         result = app.handler(event("GET", "/v1/health", sub=None), None)
         self.assertEqual(result["statusCode"], 200)
