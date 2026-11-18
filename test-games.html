@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sports Tracker 2.0 TEST | Live Scoring</title>
+<style>
+:root{font-family:system-ui,sans-serif;color:#172b48;background:#f2f6fb}*{box-sizing:border-box}body{margin:0}header{background:#142b4a;color:white;padding:20px;text-align:center}main{max-width:950px;margin:24px auto;padding:0 16px}.card{background:white;border:1px solid #dce4ee;border-radius:14px;padding:20px;margin:14px 0}select,button{font:inherit;padding:10px;border-radius:8px}select{border:1px solid #abbcd0;max-width:100%}button{border:0;background:#2463a6;color:white;cursor:pointer;margin:4px}button.secondary{background:#e5ebf3;color:#172b48}button:disabled{opacity:.5}.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}table{border-collapse:collapse;width:100%;margin:14px 0}th,td{border:1px solid #dce4ee;padding:9px;text-align:center}th:first-child{text-align:left}.muted{color:#607189}.error{color:#a21c28}a{color:#2463a6}#status{white-space:pre-wrap}
+</style>
+</head>
+<body>
+<header><h1>⚾ Sports Tracker 2.0 — TEST</h1><p>Game Management & Live Scoring</p></header>
+<main>
+<p><a href="./test-leagues.html">← My Leagues</a></p>
+<p id="status" role="status" aria-live="polite">Checking sign-in…</p>
+<section id="workspace" hidden>
+<div class="card"><h2>Create game</h2><div class="row"><label>League <select id="league"></select></label><label>Away <select id="away"></select></label><label>Home <select id="home"></select></label><button id="create">Create game</button></div></div>
+<div class="card"><h2>Games</h2><div class="row"><select id="games"></select><button id="refresh" class="secondary">Refresh</button></div></div>
+<div class="card" id="scorecard" hidden><h2 id="matchup">Game</h2><p id="phase"></p><table><thead><tr><th>Team</th><th id="innings">1</th><th>Total</th></tr></thead><tbody id="scores"></tbody></table>
+<p id="batters"></p><div class="row"><button id="start">Start</button><button id="run">+1 Run</button><button id="out">+1 Out</button><button id="next">Next Batter</button><button id="undo" class="secondary">Undo</button><button id="reset" class="secondary">Reset game</button></div>
+<h3>Batting order</h3><p class="muted">Choose the team, then add players in batting order. Saving replaces that team's order.</p><div class="row"><select id="battingSide"><option value="away">Away</option><option value="home">Home</option></select><select id="playerSelect"></select><button id="addPlayer" class="secondary">Add batter</button><button id="clearOrder" class="secondary">Clear draft</button><button id="saveOrder">Save order</button></div><ol id="order"></ol></div>
+</section>
+</main>
+<script type="module">
+import {CognitoUserPool} from "https://esm.sh/amazon-cognito-identity-js@6.3.15";
+const pool=new CognitoUserPool({UserPoolId:"us-east-2_LuhkuZQ16",ClientId:"3ie3cgmf6an7irb3ac9jb5htau"});
+const API="https://s84557nlgl.execute-api.us-east-2.amazonaws.com";
+const $=id=>document.getElementById(id);
+let session=null,leagueItems=[],teamItems=[],game=null,gameItems=[],players=[],draft=[];
+const names={};
+const status=(message,error=false)=>{$("status").textContent=message;$("status").className=error?"error":""};
+const escapeName=id=>names[id]||id;
+async function api(path,method="GET",body){if(!session)throw Error("Sign in required");const res=await fetch(API+path,{method,headers:{Authorization:"Bearer "+session.getAccessToken().getJwtToken(),...(body?{"Content-Type":"application/json"}:{})},body:body?JSON.stringify(body):undefined,cache:"no-store"});const result=await res.json();if(!res.ok)throw Error(result.error||"API error "+res.status);return result}
+const option=(value,label)=>{const e=document.createElement("option");e.value=value;e.textContent=label;return e};
+const fill=(element,items,getId,getLabel)=>{element.replaceChildren(...items.map(x=>option(getId(x),getLabel(x))))};
+const lid=()=>$("league").value;
+const path=()=>"/v1/leagues/"+encodeURIComponent(lid())+"/games";
+async function leagues(){leagueItems=(await api("/v1/leagues")).items;fill($("league"),leagueItems,x=>x.leagueId,x=>x.name);await changeLeague()}
+async function changeLeague(){game=null;$("scorecard").hidden=true;teamItems=lid()?(await api("/v1/leagues/"+encodeURIComponent(lid())+"/teams")).items:[];for(const t of teamItems)names[t.teamId]=t.name;fill($("home"),teamItems,x=>x.teamId,x=>x.name);fill($("away"),teamItems,x=>x.teamId,x=>x.name);if(teamItems.length>1)$("home").selectedIndex=1;await games()}
+async function games(){gameItems=lid()?(await api(path())).items:[];fill($("games"),gameItems,x=>x.gameId,x=>escapeName(x.awayTeamId)+" @ "+escapeName(x.homeTeamId));await loadGame()}
+async function loadGame(){const id=$("games").value;if(!id){game=null;$("scorecard").hidden=true;return}game=await api(path()+"/"+encodeURIComponent(id));render();await changeSide()}
+function render(){if(!game)return;$("scorecard").hidden=false;$("matchup").textContent=escapeName(game.awayTeamId)+" @ "+escapeName(game.homeTeamId);$("phase").textContent="Status: "+game.status+" | Inning "+game.inning+" ("+game.half+") | Outs: "+game.outs+" | Revision: "+game.revision;
+$("innings").colSpan=game.inning;$("innings").textContent="Innings";
+const tbody=$("scores");tbody.replaceChildren();for(const side of ["away","home"]){const tr=document.createElement("tr"),label=document.createElement("th");label.textContent=escapeName(game[side+"TeamId"]);tr.append(label);let total=0;for(const n of game.runs[side]){const td=document.createElement("td");td.textContent=n;total+=Number(n);tr.append(td)}const td=document.createElement("td");td.textContent=total;tr.append(td);tbody.append(tr)}
+$("batters").textContent="At bat: "+(game.batters?.current?escapeName(game.batters.current):"Not set")+" | On deck: "+(game.batters?.onDeck?escapeName(game.batters.onDeck):"Not set");
+$("start").disabled=game.status!=="scheduled";for(const id of ["run","out","next"])$(id).disabled=game.status!=="live";$("undo").disabled=!game.history?.length;renderOrder()}
+async function action(name,value){if(!game)return;try{const id=game.gameId;game=await api(path()+"/"+encodeURIComponent(id)+"/actions","POST",{action:name,revision:game.revision,...(value===undefined?{}:{value})});render();if(name==="reset"||name==="undo")await changeSide();status("Saved")}catch(err){status(err.message,true);await loadGame()}}
+async function changeSide(){if(!game)return;const tid=game[$("battingSide").value+"TeamId"];players=(await api("/v1/leagues/"+encodeURIComponent(lid())+"/teams/"+encodeURIComponent(tid)+"/players")).items;for(const p of players)names[p.playerId]=p.name;fill($("playerSelect"),players,p=>p.playerId,p=>(p.number?"#"+p.number+" ":"")+p.name);draft=[...game.battingOrders[$("battingSide").value]];renderOrder()}
+function renderOrder(){if(!game)return;const ol=$("order");ol.replaceChildren();for(const id of draft){const li=document.createElement("li");li.textContent=escapeName(id);ol.append(li)}}
+async function safe(fn){try{await fn();status("")}catch(e){status(e.message,true)}}
+$("league").addEventListener("change",()=>safe(changeLeague));$("games").addEventListener("change",()=>safe(loadGame));$("refresh").addEventListener("click",()=>safe(games));
+$("create").addEventListener("click",()=>safe(async()=>{if(!lid()||!$("home").value||!$("away").value||$("home").value===$("away").value)throw Error("Select two different teams");const created=await api(path(),"POST",{homeTeamId:$("home").value,awayTeamId:$("away").value});await games();$("games").value=created.gameId;await loadGame()}));
+for(const [id,actionName] of [["start","start"],["run","run"],["out","out"],["next","nextBatter"],["undo","undo"]])$(id).addEventListener("click",()=>action(actionName));
+$("reset").addEventListener("click",()=>{if(confirm("Reset all scoring and batting orders for this game?"))action("reset")});
+$("battingSide").addEventListener("change",()=>safe(changeSide));
+$("addPlayer").addEventListener("click",()=>{const id=$("playerSelect").value;if(id&&!draft.includes(id)&&draft.length<30){draft.push(id);renderOrder()}});
+$("clearOrder").addEventListener("click",()=>{draft=[];renderOrder()});
+$("saveOrder").addEventListener("click",()=>action("setBattingOrder",{side:$("battingSide").value,playerIds:draft}));
+try{const user=pool.getCurrentUser();if(!user)throw Error("Sign in at v2.html first");session=await new Promise((resolve,reject)=>user.getSession((e,s)=>e||!s?.isValid()?reject(e||Error("Session expired")):resolve(s)));$("workspace").hidden=false;await leagues();status("Ready")}catch(e){status(e.message+" — open v2.html to sign in.",true)}
+</script>
+</body></html>
