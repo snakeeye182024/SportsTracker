@@ -56,7 +56,6 @@ jobs:
             --stack-name sports-tracker-v2 \
             --region us-east-2 \
             --resolve-s3 \
-            --role-arn arn:aws:iam::814650855040:role/SportsTrackerCloudFormationExecution \
             --capabilities CAPABILITY_IAM \
             --no-execute-changeset \
             --no-fail-on-empty-changeset
