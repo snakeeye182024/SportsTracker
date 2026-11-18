@@ -81,6 +81,7 @@ Resources:
         - GET
         - POST
         - PUT
+        - DELETE
         - OPTIONS
         AllowHeaders:
         - authorization
@@ -207,6 +208,34 @@ Resources:
               Ref: HttpApi
             Path: /v1/leagues/{leagueId}/teams/{teamId}/players/{playerId}/contacts
             Method: PUT
+        ManagersList:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/managers
+            Method: GET
+        ManagersCreate:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/managers
+            Method: POST
+        ManagerUpdate:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/managers/{managerId}
+            Method: PUT
+        ManagerDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/managers/{managerId}
+            Method: DELETE
         GamesList:
           Type: HttpApi
           Properties:
