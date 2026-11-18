@@ -1,4 +1,4 @@
-name: AWS backend change-set preparation (no execution)
+name: AWS backend offline validation (no deployment)
 on:
   pull_request:
     paths:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: 'Type PREVIEW to create a non-executing production change set'
+        description: 'Type PREVIEW to run an offline SAM build and safety checks'
         required: true
         type: string
 
@@ -25,53 +25,20 @@ jobs:
       - run: python -m unittest discover -s backend/tests -v
 
   preview:
-    name: Prepare change set only (never execute)
+    name: Offline SAM build and safety review (no AWS credentials)
     needs: validate
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.confirmation == 'PREVIEW' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
-    environment: production
     permissions:
-      id-token: write
       contents: read
-    concurrency:
-      group: sports-tracker-production-preview
-      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: us-east-2
-          role-session-name: sports-tracker-github-preview
       - uses: aws-actions/setup-sam@v2
-      - name: Confirm account and region
+      - name: Build SAM without accessing AWS
+        run: sam build --template-file backend/template.yaml
+      - name: Enforce no-execution and protected-resource checks
+        run: python3 infra/check_backend_safety.py
+      - name: Explain offline preview boundary
         run: |
-          test "$(aws sts get-caller-identity --query Account --output text)" = "814650855040"
-          test "$AWS_REGION" = "us-east-2"
-      - name: Guard against changing existing stack execution role
-        run: |
-          # The production stack currently has no service role. A preview must not
-          # silently persist a newly assigned CloudFormation execution role.
-          current_role="$(aws cloudformation describe-stacks --stack-name sports-tracker-v2 --region us-east-2 --query 'Stacks[0].RoleARN' --output text)"
-          if [ "$current_role" = "None" ] || [ "$current_role" = "null" ] || [ -z "$current_role" ]; then
-            echo "::error::Production stack has no CloudFormation service role. Preview is intentionally blocked until an approved execution-role design is implemented."
-            exit 1
-          fi
-          echo "::error::Unexpected existing CloudFormation execution role: $current_role. Review workflow and permissions before preview."
-          exit 1
-      - name: Build and create non-executing change set
-        run: |
-          sam build --template-file backend/template.yaml
-          sam deploy \
-            --template-file .aws-sam/build/template.yaml \
-            --stack-name sports-tracker-v2 \
-            --region us-east-2 \
-            --resolve-s3 \
-            --capabilities CAPABILITY_IAM \
-            --no-execute-changeset \
-            --no-fail-on-empty-changeset
-      - name: Review-only change-set inventory
-        run: |
-          aws cloudformation list-change-sets --stack-name sports-tracker-v2 --region us-east-2 \
-            --query 'Summaries[*].[ChangeSetName,Status,ExecutionStatus]' --output table
-          echo 'STOP: This workflow never executes a change set. Review its exact ID and changes separately.'
+          echo 'Offline validation complete. No AWS credentials were requested.'
+          echo 'No change set was created or executed. Production stack remains untouched.'
