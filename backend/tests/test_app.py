@@ -89,6 +89,35 @@ class LambdaRegressionTests(unittest.TestCase):
         self.assertEqual(result["statusCode"], 400)
         self.db.put_item.assert_not_called()
 
+
+    def test_owner_adds_league_manager_contact(self):
+        body = {"role": "league", "name": "Coach", "email": "coach@example.com", "phone": "555-0101"}
+        result = app.handler(event("POST", "/v1/leagues/league-1/managers", body=body), None)
+        self.assertEqual(result["statusCode"], 201)
+        self.assertEqual(payload(result)["status"], "contact-only")
+        self.assertEqual(self.db.put_item.call_args.kwargs["Item"]["email"], "coach@example.com")
+
+    def test_team_manager_limit(self):
+        self.db.get_item.side_effect = [{"Item": self.league}, {"Item": {"teamId": "team-1"}}]
+        self.db.query.return_value = {"Items": [{"role": "team", "teamId": "team-1"} for _ in range(3)]}
+        result = app.handler(event("POST", "/v1/leagues/league-1/managers",
+            body={"role": "team", "teamId": "team-1", "name": "Fourth", "email": "fourth@example.com"}), None)
+        self.assertEqual(result["statusCode"], 409)
+        self.db.put_item.assert_not_called()
+
+    def test_non_owner_cannot_list_manager_contacts(self):
+        result = app.handler(event("GET", "/v1/leagues/league-1/managers", sub="stranger"), None)
+        self.assertEqual(result["statusCode"], 404)
+
+    def test_admin_group_can_read_any_league(self):
+        e = event("GET", "/v1/leagues/league-1", sub="admin")
+        e["requestContext"]["authorizer"]["jwt"]["claims"]["cognito:groups"] = ["SportsTrackerSuperAdmin"]
+        result = app.handler(e, None)
+        self.assertEqual(result["statusCode"], 200)
+
+    def test_unprivileged_user_cannot_read_any_league(self):
+        result = app.handler(event("GET", "/v1/leagues/league-1", sub="admin"), None)
+        self.assertEqual(result["statusCode"], 404)
     def test_health_is_public(self):
         result = app.handler(event("GET", "/v1/health", sub=None), None)
         self.assertEqual(result["statusCode"], 200)
