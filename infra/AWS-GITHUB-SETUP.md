@@ -1,36 +1,35 @@
-# AWS GitHub change-set preview (no execution)
+# Sports Tracker 2.0: offline validation and deployment design
 
-This PR is a **preview-only** workflow. The existing backend template and Lambda source are now in `backend/` on `main`. The SAM template has been validated and built in CloudShell, and its eight routes match the live API's methods, paths, and authorization choices. This does not establish code equivalence or guarantee a safe deployment.
+**No production deployment is authorized by this PR.** The AWS workflow validates the SAM template and Python tests on pull requests. Its optional manual `PREVIEW` job now performs **only an offline SAM build and conservative source checks**; it does not assume an AWS role, create a change set, or modify a stack.
 
-## AWS configuration
+## Verified environment
 
-- Account: `814650855040`; region: `us-east-2`; stack: `sports-tracker-v2`.
-- GitHub OIDC role: `SportsTrackerGitHubDeploy`. Its trust subject is the account-specific custom claim shown in `infra/github-oidc-trust-policy.json` (confirmed by the OIDC verification workflow).
-- CloudFormation execution role: `SportsTrackerCloudFormationExecution`. **Neither role is yet authorized for deployment until its reviewed IAM policies are attached and tested.**
-- Repository Actions variable: `AWS_DEPLOY_ROLE_ARN=arn:aws:iam::814650855040:role/SportsTrackerGitHubDeploy`.
-- The `production` GitHub environment must be configured with required reviewers, prevent self-review where supported, and limit deployment branches to `main`. **Verify actual approval enforcement**; merely naming an environment does not require review.
+- AWS application account: `814650855040`; region: `us-east-2`; stack: `sports-tracker-v2` (`CREATE_COMPLETE`).
+- Current stack service role: `RoleARN: null`.
+- GitHub OIDC role: `SportsTrackerGitHubDeploy`; its region-aware IAM simulation allows `CreateChangeSet` and `DescribeChangeSet`, and implicitly denies `ExecuteChangeSet` and `DeleteStack`. This simulation does **not** prove an end-to-end deployment.
+- GitHub environment `production` required reviewers and deployment-branch rules have **not been verified**.
+- The AWS Organizations region SCP permits `us-east-2`; the earlier explicit deny was due to missing `aws:RequestedRegion` simulation context.
+- A dedicated `SportsTrackerCloudFormationExecution` role exists with CloudFormation trust, **no policies attached**, and **no association with the stack**.
 
-## Execution-role policy draft and current block
+## Review-only execution-role policy
 
-- `infra/cloudformation-execution-policy.DRAFT.json` is a **review-only draft**. It is not attached to any AWS role and is **not proven complete** for the SAM-transformed stack (which also contains Lambda permissions, an API Gateway stage, and a generated IAM role).
-- The live stack has `RoleARN: null`. Passing `--role-arn` during a change-set preview may permanently associate a service role with the stack. The preview job now **fails closed** before `sam deploy` until a separately reviewed design is approved. It never runs `ExecuteChangeSet`.
-- No CloudFormation execution-role permissions have been attached, and no stack role has been assigned.
-- Future work must validate the processed template, complete any required permissions, inspect proposed change-set resource changes and API authorization, verify GitHub environment approval, and document rollback before enabling preview or execution.
+`infra/cloudformation-execution-policy.DRAFT.json` scopes potential future permissions to the current Lambda function, API Gateway and existing Lambda role. **Do not attach it yet.** The SAM transform includes Lambda permissions, an API Gateway stage, and a generated IAM role, and the draft has not been verified to cover all CloudFormation actions or a safe rollback.
 
-## Preview procedure (blocked pending approval)
+Assigning a service role to an existing CloudFormation stack can persist across future updates. Do not add `--role-arn` to a change-set preview without separately reviewing that persistent effect.
 
-1. Review and merge this PR **only after reviewing the workflow**; merging does not trigger deployment.
-2. Review IAM policies and attach only permissions required for change-set creation and narrowly scoped CloudFormation updates. Do not grant `cloudformation:ExecuteChangeSet` to the GitHub preview role.
-3. **Do not run the manual preview yet.** The workflow intentionally fails closed before change-set creation while the production stack has no approved CloudFormation service-role design.
-4. Identify the new change-set ID in the output. Use `aws cloudformation describe-change-set` to inspect the exact resources and details. Only `ApiFunction` and `HttpApi` modifications without replacement are expected for the initial release. If anything else appears, stop.
-5. **Do not execute** the change set until there is a separate approved execution workflow, IAM permissions, and a rollback plan. An approval in this preview workflow is not permission to deploy.
+## How to run safe offline checks
 
-## Safety notes
+- On PRs: GitHub Actions runs `sam validate --template-file backend/template.yaml --lint` and `python -m unittest discover -s backend/tests -v`.
+- After merging a reviewed workflow, a manual dispatch on `main` with confirmation `PREVIEW` runs `sam build --template-file backend/template.yaml` and `python3 infra/check_backend_safety.py`. **No AWS credentials are requested**.
+- The safety script is intentionally conservative. It checks selected template markers and route fields, not the actual deployed stack, generated CloudFormation semantics, or exact route-to-method pairings.
 
-- The workflow uses `--no-execute-changeset`. There is **no execute step**.
-- The existing production stack policy denies CloudFormation updates to `DataTable`, `UserPool`, and `UserPoolClient`; it does not prevent direct changes or stack deletion.
-- `SportsTrackerGitHubDeploy` must not have `cloudformation:ExecuteChangeSet` or stack deletion permissions.
-- The preview omits `--role-arn` and is additionally blocked before SAM deployment. A separate execution design must review persistent role association before any preview or deployment.
-- The GitHub environment approval settings are not yet verified.
-- The older pending change set `samcli-deploy1795021746` is not approved for execution.
-- Leave the Sports Tracker 1.0 stack and `index.html` unchanged.
+## Before enabling an AWS change-set preview
+
+1. Review the SAM-transformed template and the full permissions required by CloudFormation, including generated Lambda permissions, API stage, IAM role, and any KMS/S3 dependencies.
+2. Decide whether to associate a persistent CloudFormation service role with the production stack. Explicitly approve that decision and document recovery and rollback.
+3. Verify GitHub production-environment reviewers, self-review restriction and `main` branch restriction.
+4. Review a fresh change set, confirm only intended non-replacement Lambda/API modifications, and compare live API authorization, CORS and routes.
+5. Maintain separation of duties: GitHub preview role must **not** gain `ExecuteChangeSet` or `DeleteStack`.
+6. Do not execute the existing change set `samcli-deploy1795021746`; create and review a fresh one after the deployment design is approved.
+
+The existing CloudFormation stack policy denies updates to `DataTable`, `UserPool` and `UserPoolClient`, but does not protect against direct API changes or full stack deletion. Leave the Sports Tracker 1.0 stack and `index.html` untouched.
