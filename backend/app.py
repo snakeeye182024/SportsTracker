@@ -56,9 +56,9 @@ def league_key(league_id):
     return f'LEAGUE#{league_id}'
 
 
-def league_for_user(league_id, sub):
+def league_for_user(league_id, sub, is_admin=False):
     item = table().get_item(Key={'PK': league_key(league_id), 'SK': 'META'}, ConsistentRead=True).get('Item')
-    if not item or item.get('ownerSub') != sub:
+    if not item or (item.get('ownerSub') != sub and not is_admin):
         return None
     return item
 
@@ -75,6 +75,10 @@ def handler(event, context):
         return reply(200, {'status': 'ok', 'version': '2.0'})
     claims = event.get('requestContext', {}).get('authorizer', {}).get('jwt', {}).get('claims', {})
     sub = claims.get('sub')
+    groups = claims.get('cognito:groups', [])
+    if isinstance(groups, str):
+        groups = [g.strip() for g in groups.strip('[]').split(',')]
+    is_admin = 'SportsTrackerSuperAdmin' in groups
     if not sub:
         return fail(401, 'Authentication required')
     parts = [p for p in path.split('/') if p]
@@ -83,10 +87,20 @@ def handler(event, context):
     try:
         if parts == ['v1', 'leagues']:
             if method == 'GET':
+                if is_admin:
+                    records = []
+                    params = {'FilterExpression': Key('SK').eq('META') & Key('PK').begins_with('LEAGUE#')}
+                    while True:
+                        page = table().scan(**params)
+                        records.extend(page.get('Items', []))
+                        if 'LastEvaluatedKey' not in page:
+                            break
+                        params['ExclusiveStartKey'] = page['LastEvaluatedKey']
+                    return reply(200, {'items': records})
                 memberships = query(owner_key(sub), 'LEAGUE#')
                 leagues = []
                 for m in memberships:
-                    obj = league_for_user(m['leagueId'], sub)
+                    obj = league_for_user(m['leagueId'], sub, is_admin)
                     if obj:
                         leagues.append(obj)
                 return reply(200, {'items': leagues})
@@ -110,7 +124,7 @@ def handler(event, context):
                 return reply(201, item)
         if len(parts) >= 3 and parts[1] == 'leagues':
             lid = parts[2]
-            league = league_for_user(lid, sub)
+            league = league_for_user(lid, sub, is_admin)
             if not league:
                 return fail(404, 'League not found')
             if len(parts) == 3 and method == 'GET':
@@ -132,6 +146,53 @@ def handler(event, context):
                     ConditionExpression='attribute_exists(PK)')
                 league.update(updates)
                 return reply(200, league)
+            if len(parts) == 4 and parts[3] == 'managers':
+                if method == 'GET':
+                    return reply(200, {'items': query(league_key(lid), 'MANAGER#')})
+                if method == 'POST':
+                    body = load_body(event)
+                    role = body.get('role')
+                    if role not in ('league', 'team'):
+                        raise ValueError('Role must be league or team')
+                    manager_name = name_field(body, 'name', 100)
+                    email = name_field(body, 'email', 254)
+                    if '@' not in email or ' ' in email:
+                        raise ValueError('Invalid manager email')
+                    phone = str(body.get('phone', '')).strip()
+                    if len(phone) > 30:
+                        raise ValueError('Invalid phone')
+                    tid = str(body.get('teamId', '')).strip() if role == 'team' else ''
+                    if role == 'team':
+                        if not tid or not table().get_item(Key={'PK': league_key(lid), 'SK': f'TEAM#{tid}'}, ConsistentRead=True).get('Item'):
+                            raise ValueError('Choose an existing team')
+                        managers = query(league_key(lid), 'MANAGER#')
+                        if sum(m.get('role') == 'team' and m.get('teamId') == tid for m in managers) >= 3:
+                            return fail(409, 'A team can have no more than three managers')
+                    mid = str(uuid.uuid4())
+                    record = {'PK': league_key(lid), 'SK': f'MANAGER#{mid}', 'managerId': mid, 'leagueId': lid, 'teamId': tid, 'role': role, 'name': manager_name, 'email': email, 'phone': phone, 'status': 'contact-only', 'createdAt': now()}
+                    table().put_item(Item=record, ConditionExpression='attribute_not_exists(PK)')
+                    return reply(201, record)
+            if len(parts) == 5 and parts[3] == 'managers':
+                mid = parts[4]
+                key = {'PK': league_key(lid), 'SK': f'MANAGER#{mid}'}
+                record = table().get_item(Key=key, ConsistentRead=True).get('Item')
+                if not record:
+                    return fail(404, 'Manager not found')
+                if method == 'PUT':
+                    body = load_body(event)
+                    record['name'] = name_field(body, 'name', 100)
+                    record['email'] = name_field(body, 'email', 254)
+                    if '@' not in record['email'] or ' ' in record['email']:
+                        raise ValueError('Invalid manager email')
+                    record['phone'] = str(body.get('phone', '')).strip()
+                    if len(record['phone']) > 30:
+                        raise ValueError('Invalid phone')
+                    record['updatedAt'] = now()
+                    table().put_item(Item=record, ConditionExpression='attribute_exists(PK)')
+                    return reply(200, record)
+                if method == 'DELETE':
+                    table().delete_item(Key=key)
+                    return reply(200, {'deleted': True})
             if len(parts) == 4 and parts[3] == 'teams':
                 if method == 'GET':
                     return reply(200, {'items': query(league_key(lid), 'TEAM#')})
