@@ -1,0 +1,91 @@
+name: Sports Tracker 2.0 TEST - validate and deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_test:
+        description: "Deploy to isolated AWS TEST stack after validation?"
+        type: boolean
+        required: true
+        default: false
+      confirmation:
+        description: "For deployment type DEPLOY-TEST (leave blank for validation only)"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sports-tracker-v2-test-deployment
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Stage 1 - Tests and SAM validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install boto3 botocore cfn-lint
+      - run: python -m unittest discover -s backend/tests -v
+      - uses: aws-actions/setup-sam@v2
+      - run: sam validate --template-file backend/template.yaml --lint
+      - run: sam build --template-file backend/template.yaml
+
+  deploy:
+    name: Stage 2 - Approved TEST-only AWS deployment
+    needs: validate
+    if: ${{ inputs.deploy_test && inputs.confirmation == 'DEPLOY-TEST' && github.ref == 'refs/heads/feature/v2-live-scoring-foundation' }}
+    runs-on: ubuntu-latest
+    environment: sports-tracker-v2-test
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install boto3 botocore cfn-lint
+      - uses: aws-actions/setup-sam@v2
+      - run: sam validate --template-file backend/template.yaml --lint
+      - run: sam build --template-file backend/template.yaml
+      - name: Require dedicated TEST deployment role
+        env:
+          ROLE_ARN: ${{ vars.AWS_TEST_DEPLOY_ROLE_ARN }}
+        run: |
+          test -n "$ROLE_ARN" || { echo "Set AWS_TEST_DEPLOY_ROLE_ARN in protected environment"; exit 1; }
+          case "$ROLE_ARN" in
+            arn:aws:iam::814650855040:role/SportsTrackerV2TestGitHubDeploy) ;;
+            *) echo "Refusing unexpected deployment role"; exit 1 ;;
+          esac
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_TEST_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-2
+      - name: Check account and isolated stack
+        run: |
+          set -euo pipefail
+          test "$(aws sts get-caller-identity --query Account --output text)" = "814650855040"
+          test "$(aws cloudformation describe-stacks --region us-east-2 --stack-name sports-tracker-v2-test --query 'Stacks[0].StackStatus' --output text)" = "UPDATE_COMPLETE" || test "$(aws cloudformation describe-stacks --region us-east-2 --stack-name sports-tracker-v2-test --query 'Stacks[0].StackStatus' --output text)" = "CREATE_COMPLETE"
+          ROLE=$(aws cloudformation describe-stacks --region us-east-2 --stack-name sports-tracker-v2-test --query 'Stacks[0].RoleARN' --output text)
+          test "$ROLE" = "None" || { echo "Refusing stack with service role"; exit 1; }
+      - name: Deploy TEST stack only
+        run: |
+          sam deploy --template-file .aws-sam/build/template.yaml \
+            --stack-name sports-tracker-v2-test \
+            --region us-east-2 \
+            --resolve-s3 \
+            --capabilities CAPABILITY_IAM \
+            --parameter-overrides AllowedOrigin=https://snakeeye182024.github.io \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
+      - name: Verify TEST health endpoint
+        run: |
+          set -euo pipefail
+          API=$(aws cloudformation describe-stacks --stack-name sports-tracker-v2-test --region us-east-2 --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue | [0]" --output text)
+          curl --fail --silent --show-error "$API/v1/health"
