@@ -115,6 +115,23 @@ def handler(event, context):
                 return fail(404, 'League not found')
             if len(parts) == 3 and method == 'GET':
                 return reply(200, league)
+            if len(parts) == 3 and method == 'PUT':
+                body = load_body(event)
+                updates = {}
+                for field, maximum in (('name', 120), ('season', 40)):
+                    if field in body:
+                        updates[field] = name_field(body, field, maximum)
+                if not updates:
+                    raise ValueError('Provide a league name or season')
+                updates['updatedAt'] = now()
+                expression = 'SET ' + ', '.join('#' + k + ' = :' + k for k in updates)
+                table().update_item(Key={'PK': league_key(lid), 'SK': 'META'},
+                    UpdateExpression=expression,
+                    ExpressionAttributeNames={'#' + k: k for k in updates},
+                    ExpressionAttributeValues={':' + k: v for k, v in updates.items()},
+                    ConditionExpression='attribute_exists(PK)')
+                league.update(updates)
+                return reply(200, league)
             if len(parts) == 4 and parts[3] == 'teams':
                 if method == 'GET':
                     return reply(200, {'items': query(league_key(lid), 'TEAM#')})
@@ -125,6 +142,20 @@ def handler(event, context):
                     item = {'PK': league_key(lid), 'SK': f'TEAM#{tid}', 'leagueId': lid, 'teamId': tid, 'name': name, 'createdAt': now()}
                     table().put_item(Item=item, ConditionExpression='attribute_not_exists(PK)')
                     return reply(201, item)
+            if len(parts) == 5 and parts[3] == 'teams':
+                tid = parts[4]
+                key = {'PK': league_key(lid), 'SK': f'TEAM#{tid}'}
+                team = table().get_item(Key=key, ConsistentRead=True).get('Item')
+                if not team:
+                    return fail(404, 'Team not found')
+                if method == 'GET':
+                    return reply(200, team)
+                if method == 'PUT':
+                    body = load_body(event)
+                    team['name'] = name_field(body, 'name')
+                    team['updatedAt'] = now()
+                    table().put_item(Item=team, ConditionExpression='attribute_exists(PK)')
+                    return reply(200, team)
             if len(parts) == 6 and parts[3] == 'teams' and parts[5] == 'players':
                 tid = parts[4]
                 team = table().get_item(Key={'PK': league_key(lid), 'SK': f'TEAM#{tid}'}).get('Item')
@@ -143,6 +174,53 @@ def handler(event, context):
                     item = {'PK': f'TEAM#{tid}', 'SK': f'PLAYER#{pid}', 'playerId': pid, 'teamId': tid, 'name': player_name, 'number': number, 'position': position, 'createdAt': now()}
                     table().put_item(Item=item, ConditionExpression='attribute_not_exists(PK)')
                     return reply(201, item)
+            if len(parts) == 7 and parts[3] == 'teams' and parts[5] == 'players':
+                tid, pid = parts[4], parts[6]
+                if not table().get_item(Key={'PK': league_key(lid), 'SK': f'TEAM#{tid}'}, ConsistentRead=True).get('Item'):
+                    return fail(404, 'Team not found')
+                key = {'PK': f'TEAM#{tid}', 'SK': f'PLAYER#{pid}'}
+                player = table().get_item(Key=key, ConsistentRead=True).get('Item')
+                if not player:
+                    return fail(404, 'Player not found')
+                if method == 'PUT':
+                    body = load_body(event)
+                    player['name'] = name_field(body, 'name')
+                    number = str(body.get('number', '')).strip()
+                    position = str(body.get('position', '')).strip()
+                    if len(number) > 5 or len(position) > 30:
+                        raise ValueError('Invalid number or position')
+                    player.update({'number': number, 'position': position, 'updatedAt': now()})
+                    table().put_item(Item=player, ConditionExpression='attribute_exists(PK)')
+                    return reply(200, player)
+            if len(parts) == 8 and parts[3] == 'teams' and parts[5] == 'players' and parts[7] == 'contacts':
+                tid, pid = parts[4], parts[6]
+                if not table().get_item(Key={'PK': league_key(lid), 'SK': f'TEAM#{tid}'}, ConsistentRead=True).get('Item'):
+                    return fail(404, 'Team not found')
+                player = table().get_item(Key={'PK': f'TEAM#{tid}', 'SK': f'PLAYER#{pid}'}, ConsistentRead=True).get('Item')
+                if not player:
+                    return fail(404, 'Player not found')
+                key = {'PK': f'PLAYER#{pid}', 'SK': 'CONTACTS'}
+                if method == 'GET':
+                    contact = table().get_item(Key=key, ConsistentRead=True).get('Item') or {}
+                    return reply(200, {'contacts': contact.get('contacts', [])})
+                if method == 'PUT':
+                    body = load_body(event)
+                    contacts = body.get('contacts')
+                    if not isinstance(contacts, list) or len(contacts) > 3:
+                        raise ValueError('Provide up to three parent/guardian contacts')
+                    cleaned = []
+                    for c in contacts:
+                        if not isinstance(c, dict):
+                            raise ValueError('Invalid contact')
+                        name = name_field(c, 'name', 100)
+                        relationship = str(c.get('relationship', '')).strip()
+                        email = str(c.get('email', '')).strip()
+                        phone = str(c.get('phone', '')).strip()
+                        if len(relationship) > 40 or len(email) > 254 or len(phone) > 30 or (email and ('@' not in email or ' ' in email)):
+                            raise ValueError('Invalid contact fields')
+                        cleaned.append({'name': name, 'relationship': relationship, 'email': email, 'phone': phone})
+                    table().put_item(Item={**key, 'contacts': cleaned, 'updatedAt': now()})
+                    return reply(200, {'contacts': cleaned})
         if len(parts) >= 4 and parts[1] == 'leagues' and parts[3] == 'games':
             lid = parts[2]
             if not league_for_user(lid, sub):
