@@ -81,6 +81,7 @@ Resources:
         - GET
         - POST
         - PUT
+        - DELETE
         - OPTIONS
         AllowHeaders:
         - authorization
@@ -164,6 +165,104 @@ Resources:
             ApiId:
               Ref: HttpApi
             Path: /v1/leagues/{leagueId}/teams/{teamId}/players
+            Method: POST
+        LeagueUpdate:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}
+            Method: PUT
+        TeamGet:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/teams/{teamId}
+            Method: GET
+        TeamUpdate:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/teams/{teamId}
+            Method: PUT
+        PlayerUpdate:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/teams/{teamId}/players/{playerId}
+            Method: PUT
+        PlayerContactsGet:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/teams/{teamId}/players/{playerId}/contacts
+            Method: GET
+        PlayerContactsUpdate:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/teams/{teamId}/players/{playerId}/contacts
+            Method: PUT
+        ManagersList:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/managers
+            Method: GET
+        ManagersCreate:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/managers
+            Method: POST
+        ManagerUpdate:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/managers/{managerId}
+            Method: PUT
+        ManagerDelete:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/managers/{managerId}
+            Method: DELETE
+        GamesList:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/games
+            Method: GET
+        GamesCreate:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/games
+            Method: POST
+        GameGet:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/games/{gameId}
+            Method: GET
+        GameAction:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /v1/leagues/{leagueId}/games/{gameId}/actions
             Method: POST
     Metadata:
       SamResourceId: ApiFunction

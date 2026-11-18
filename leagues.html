@@ -10,7 +10,7 @@
 <body>
 <header><h1>⚾ Sports Tracker 2.0</h1><p>League Management</p></header>
 <main>
-<div class="card"><div class="row"><strong id="account">Checking your session…</strong><button class="secondary" id="signout">Sign out</button><a href="./index.html">Original scoreboard</a></div><p id="status" role="status" aria-live="polite"></p></div>
+<div class="card"><div class="row"><strong id="account">Checking your session…</strong><button class="secondary" id="signout">Sign out</button><a href="./games.html">Game scoring (preview)</a><a href="./index.html">Original scoreboard</a></div><p id="status" role="status" aria-live="polite"></p></div>
 <section id="workspace" hidden>
 <div class="card"><h2>Create a league</h2><form id="createForm"><label for="leagueName">League name</label><div class="row"><input id="leagueName" required maxlength="100" placeholder="Example: Youth Baseball League"></div><label for="season" style="margin-top:14px">Season</label><div class="row"><select id="season" required><option value="" selected disabled>Select a season</option><option value="Spring">Spring</option><option value="Summer">Summer</option><option value="Fall">Fall</option><option value="Other">Other</option></select><button id="createButton" type="submit">Create league</button></div></form><p class="muted">The league will be associated with your signed-in account, subject to backend permissions.</p></div>
 <div class="card"><div class="row"><h2 style="margin:0">My leagues</h2><button id="reload" class="secondary" type="button">Refresh</button></div><div id="leagues" aria-live="polite"><p class="muted">Loading leagues…</p></div></div>
