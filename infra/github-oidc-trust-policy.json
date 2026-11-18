@@ -10,7 +10,7 @@
       "Condition": {
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "repo:snakeeye182024/SportsTracker:environment:production"
+          "token.actions.githubusercontent.com:sub": "repo:snakeeye182024@357572261/SportsTracker@1460605290:environment:production"
         }
       }
     }
