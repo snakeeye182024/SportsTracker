@@ -21,7 +21,7 @@ required = {
     "ApiFunction": "AWS::Serverless::Function",
 }
 for logical_id, resource_type in required.items():
-    pattern = rf"(?m)^  {re.escape(logical_id)}:\\s*\\n    Type: {re.escape(resource_type)}\\s*$"
+    pattern = rf"(?m)^  {re.escape(logical_id)}:\s*\n    Type: {re.escape(resource_type)}\s*$"
     if not re.search(pattern, source):
         sys.exit(f"FAIL: expected resource {logical_id} of type {resource_type} not found")
 
@@ -47,7 +47,7 @@ for path, method in (
     ("/v1/leagues/{leagueId}/teams/{teamId}/players", "GET"),
     ("/v1/leagues/{leagueId}/teams/{teamId}/players", "POST"),
 ):
-    if f"Path: {path}\\n" not in source or f"Method: {method}\\n" not in source:
+    if f"Path: {path}\n" not in source or f"Method: {method}\n" not in source:
         sys.exit(f"FAIL: expected route field missing: {method} {path}")
 
 if "AWS::Serverless::Function" not in built:
