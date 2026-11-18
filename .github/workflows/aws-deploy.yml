@@ -19,8 +19,8 @@ jobs:
     name: Validate backend template
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/setup-sam@v2
+      - uses: actions/checkout@v5
+      - uses: aws-actions/setup-sam@v3
       - run: sam validate --template-file backend/template.yaml --lint
       - run: python -m unittest discover -s backend/tests -v
 
@@ -32,8 +32,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/setup-sam@v2
+      - uses: actions/checkout@v5
+      - uses: aws-actions/setup-sam@v3
       - name: Build SAM without accessing AWS
         run: sam build --template-file backend/template.yaml
       - name: Enforce no-execution and protected-resource checks
