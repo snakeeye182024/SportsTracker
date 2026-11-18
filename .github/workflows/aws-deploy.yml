@@ -1,4 +1,4 @@
-name: AWS backend deployment (approval required)
+name: AWS backend change-set preparation (no execution)
 on:
   pull_request:
     paths:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: 'Type DEPLOY to request a production deployment'
+        description: 'Type PREVIEW to create a non-executing production change set'
         required: true
         type: string
 
@@ -17,27 +17,24 @@ permissions:
 jobs:
   validate:
     name: Validate backend template
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Require reviewed backend source
-        run: |
-          test -f backend/template.yaml || { echo "::error::backend/template.yaml is not yet committed. Import and review the existing AWS stack before deployment."; exit 1; }
       - uses: aws-actions/setup-sam@v2
       - run: sam validate --template-file backend/template.yaml --lint
+      - run: python -m unittest discover -s backend/tests -v
 
-  deploy:
-    name: Deploy to AWS after approval
+  preview:
+    name: Prepare change set only (never execute)
     needs: validate
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.confirmation == 'DEPLOY' && github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.confirmation == 'PREVIEW' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     environment: production
     permissions:
       id-token: write
       contents: read
     concurrency:
-      group: sports-tracker-production-deploy
+      group: sports-tracker-production-preview
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
@@ -45,11 +42,26 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: us-east-2
-          role-session-name: sports-tracker-github-deploy
+          role-session-name: sports-tracker-github-preview
       - uses: aws-actions/setup-sam@v2
-      - name: Confirm AWS identity
-        run: aws sts get-caller-identity
-      - name: Deploy reviewed SAM template
+      - name: Confirm account and region
+        run: |
+          test "$(aws sts get-caller-identity --query Account --output text)" = "814650855040"
+          test "$AWS_REGION" = "us-east-2"
+      - name: Build and create non-executing change set
         run: |
           sam build --template-file backend/template.yaml
-          sam deploy --template-file .aws-sam/build/template.yaml --stack-name sports-tracker-v2 --region us-east-2 --resolve-s3 --no-confirm-changeset --no-fail-on-empty-changeset --capabilities CAPABILITY_IAM
+          sam deploy \
+            --template-file .aws-sam/build/template.yaml \
+            --stack-name sports-tracker-v2 \
+            --region us-east-2 \
+            --resolve-s3 \
+            --role-arn arn:aws:iam::814650855040:role/SportsTrackerCloudFormationExecution \
+            --capabilities CAPABILITY_IAM \
+            --no-execute-changeset \
+            --no-fail-on-empty-changeset
+      - name: Review-only change-set inventory
+        run: |
+          aws cloudformation list-change-sets --stack-name sports-tracker-v2 --region us-east-2 \
+            --query 'Summaries[*].[ChangeSetName,Status,ExecutionStatus]' --output table
+          echo 'STOP: This workflow never executes a change set. Review its exact ID and changes separately.'
