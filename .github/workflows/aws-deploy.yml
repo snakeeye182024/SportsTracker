@@ -48,6 +48,17 @@ jobs:
         run: |
           test "$(aws sts get-caller-identity --query Account --output text)" = "814650855040"
           test "$AWS_REGION" = "us-east-2"
+      - name: Guard against changing existing stack execution role
+        run: |
+          # The production stack currently has no service role. A preview must not
+          # silently persist a newly assigned CloudFormation execution role.
+          current_role="$(aws cloudformation describe-stacks --stack-name sports-tracker-v2 --region us-east-2 --query 'Stacks[0].RoleARN' --output text)"
+          if [ "$current_role" = "None" ] || [ "$current_role" = "null" ] || [ -z "$current_role" ]; then
+            echo "::error::Production stack has no CloudFormation service role. Preview is intentionally blocked until an approved execution-role design is implemented."
+            exit 1
+          fi
+          echo "::error::Unexpected existing CloudFormation execution role: $current_role. Review workflow and permissions before preview."
+          exit 1
       - name: Build and create non-executing change set
         run: |
           sam build --template-file backend/template.yaml
