@@ -74,12 +74,18 @@ jobs:
           test "$(aws cloudformation describe-stacks --region us-east-2 --stack-name sports-tracker-v2-test --query 'Stacks[0].StackStatus' --output text)" = "UPDATE_COMPLETE" || test "$(aws cloudformation describe-stacks --region us-east-2 --stack-name sports-tracker-v2-test --query 'Stacks[0].StackStatus' --output text)" = "CREATE_COMPLETE"
           ROLE=$(aws cloudformation describe-stacks --region us-east-2 --stack-name sports-tracker-v2-test --query 'Stacks[0].RoleARN' --output text)
           test "$ROLE" = "None" || { echo "Refusing stack with service role"; exit 1; }
+      - name: Verify dedicated TEST artifact bucket
+        run: |
+          set -euo pipefail
+          aws s3api head-bucket --bucket sports-tracker-v2-test-artifacts-814650855040-us-east-2
+          test "$(aws s3api get-bucket-location --bucket sports-tracker-v2-test-artifacts-814650855040-us-east-2 --query LocationConstraint --output text)" = "us-east-2"
       - name: Deploy TEST stack only
         run: |
           sam deploy --template-file .aws-sam/build/template.yaml \
             --stack-name sports-tracker-v2-test \
             --region us-east-2 \
-            --resolve-s3 \
+            --s3-bucket sports-tracker-v2-test-artifacts-814650855040-us-east-2 \
+            --s3-prefix sam \
             --capabilities CAPABILITY_IAM \
             --parameter-overrides AllowedOrigin=https://snakeeye182024.github.io \
             --no-confirm-changeset \
