@@ -79,8 +79,9 @@ jobs:
           set -euo pipefail
           aws s3api head-bucket --bucket sports-tracker-v2-test-artifacts-814650855040-us-east-2
           test "$(aws s3api get-bucket-location --bucket sports-tracker-v2-test-artifacts-814650855040-us-east-2 --query LocationConstraint --output text)" = "us-east-2"
-      - name: Deploy TEST stack only
+      - name: Prepare TEST change set without executing
         run: |
+          set -euo pipefail
           sam deploy --template-file .aws-sam/build/template.yaml \
             --stack-name sports-tracker-v2-test \
             --region us-east-2 \
@@ -88,8 +89,99 @@ jobs:
             --s3-prefix sam \
             --capabilities CAPABILITY_IAM \
             --parameter-overrides AllowedOrigin=https://snakeeye182024.github.io \
-            --no-confirm-changeset \
-            --no-fail-on-empty-changeset
+            --no-execute-changeset \
+            --no-fail-on-empty-changeset \
+            --no-confirm-changeset
+      - name: Verify TEST change set before execution
+        id: review
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import boto3
+          import os
+          from botocore.exceptions import ClientError
+
+          cfn = boto3.client("cloudformation", region_name="us-east-2")
+          stack = cfn.describe_stacks(StackName="sports-tracker-v2-test")["Stacks"][0]
+          expected_stack_id = stack["StackId"]
+          if stack["StackStatus"] not in ("CREATE_COMPLETE", "UPDATE_COMPLETE"):
+              raise SystemExit("Refusing deployment: unexpected TEST stack status")
+          if stack.get("RoleARN"):
+              raise SystemExit("Refusing deployment: TEST stack uses a service role")
+
+          sets = cfn.list_change_sets(StackName="sports-tracker-v2-test")["Summaries"]
+          candidates = [
+              item for item in sets
+              if item["ChangeSetName"].startswith("samcli-deploy")
+              and item["Status"] == "CREATE_COMPLETE"
+              and item["ExecutionStatus"] == "AVAILABLE"
+          ]
+          if len(candidates) != 1:
+              raise SystemExit(
+                  f"Expected exactly one available SAM TEST change set; found {len(candidates)}. "
+                  "Remove stale change sets using an authorized account before retrying."
+              )
+          selected = candidates[0]
+          change_set_arn = selected["ChangeSetId"]
+          changes = []
+          next_token = None
+          while True:
+              args = {"ChangeSetName": change_set_arn, "StackName": expected_stack_id}
+              if next_token:
+                  args["NextToken"] = next_token
+              page = cfn.describe_change_set(**args)
+              if page["StackId"] != expected_stack_id:
+                  raise SystemExit("Change set belongs to a different stack")
+              if page["Status"] != "CREATE_COMPLETE" or page["ExecutionStatus"] != "AVAILABLE":
+                  raise SystemExit("Change set is not available")
+              changes.extend(page.get("Changes", []))
+              next_token = page.get("NextToken")
+              if not next_token:
+                  break
+
+          approved_modifications = {
+              ("ApiFunction", "AWS::Lambda::Function"),
+              ("HttpApi", "AWS::ApiGatewayV2::Api"),
+          }
+          for change in changes:
+              resource = change.get("ResourceChange", {})
+              action = resource.get("Action")
+              logical_id = resource.get("LogicalResourceId", "")
+              resource_type = resource.get("ResourceType", "")
+              replacement = resource.get("Replacement")
+              approved = (
+                  action == "Modify"
+                  and (logical_id, resource_type) in approved_modifications
+                  and replacement == "False"
+              ) or (
+                  action == "Add"
+                  and resource_type == "AWS::Lambda::Permission"
+                  and logical_id.startswith("ApiFunction")
+              )
+              print(f"{action}: {logical_id} ({resource_type}), replacement={replacement}")
+              if not approved:
+                  raise SystemExit("Unapproved change detected; refusing execution")
+          if not changes:
+              raise SystemExit("No resource changes found; refusing execution")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"change_set_arn={change_set_arn}\n")
+              output.write(f"stack_id={expected_stack_id}\n")
+          print("Verified TEST stack association and approved resource changes.")
+          PY
+      - name: Execute verified TEST change set
+        env:
+          CHANGE_SET_ARN: ${{ steps.review.outputs.change_set_arn }}
+          STACK_ID: ${{ steps.review.outputs.stack_id }}
+        run: |
+          set -euo pipefail
+          aws cloudformation execute-change-set \
+            --change-set-name "$CHANGE_SET_ARN" \
+            --stack-name "$STACK_ID" \
+            --region us-east-2
+          aws cloudformation wait stack-update-complete \
+            --stack-name "$STACK_ID" \
+            --region us-east-2
       - name: Verify TEST health endpoint
         run: |
           set -euo pipefail
