@@ -52,6 +52,38 @@ jobs:
         run: |
           set -euo pipefail
           test "$ROLE_ARN" = "arn:aws:iam::814650855040:role/SportsTrackerV2TestGitHubDeploy"
+      - name: Inspect GitHub OIDC claims (no token output)
+        env:
+          ACTIONS_ID_TOKEN_REQUEST_URL: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL }}
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import base64
+          import json
+          import os
+          import urllib.parse
+          import urllib.request
+
+          url = os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"]
+          token = os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]
+          separator = "&" if "?" in url else "?"
+          request = urllib.request.Request(
+              url + separator + urllib.parse.urlencode({"audience": "sts.amazonaws.com"}),
+              headers={"Authorization": "Bearer " + token},
+          )
+          with urllib.request.urlopen(request, timeout=15) as response:
+              jwt = json.load(response)["value"]
+          payload = jwt.split(".")[1]
+          payload += "=" * (-len(payload) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(payload))
+          for name in ("iss", "aud", "sub", "repository", "environment", "ref"):
+              print(f"{name}: {claims.get(name)}")
+          expected = "repo:snakeeye182024/SportsTracker:environment:sports-tracker-v2-test"
+          if claims.get("sub") != expected:
+              print("WARNING: OIDC subject does not match IAM trust policy.")
+          else:
+              print("OIDC subject matches IAM trust policy.")
+          PY
       - name: Assume GitHub TEST deployment role
         uses: aws-actions/configure-aws-credentials@v6
         with:
