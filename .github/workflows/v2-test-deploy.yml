@@ -26,13 +26,13 @@ jobs:
     name: Stage 1 - Tests and SAM validation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - run: pip install boto3 botocore cfn-lint
       - run: python -m unittest discover -s backend/tests -v
-      - uses: aws-actions/setup-sam@v2
+      - uses: aws-actions/setup-sam@v3
       - run: sam validate --template-file backend/template.yaml --lint
       - run: sam build --template-file backend/template.yaml
 
@@ -46,12 +46,12 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - run: pip install boto3 botocore cfn-lint
-      - uses: aws-actions/setup-sam@v2
+      - uses: aws-actions/setup-sam@v3
       - run: sam validate --template-file backend/template.yaml --lint
       - run: sam build --template-file backend/template.yaml
       - name: Require dedicated TEST deployment role
@@ -63,7 +63,7 @@ jobs:
             arn:aws:iam::814650855040:role/SportsTrackerV2TestGitHubDeploy) ;;
             *) echo "Refusing unexpected deployment role"; exit 1 ;;
           esac
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_TEST_DEPLOY_ROLE_ARN }}
           aws-region: us-east-2
