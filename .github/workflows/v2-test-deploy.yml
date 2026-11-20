@@ -36,6 +36,40 @@ jobs:
       - run: sam validate --template-file backend/template.yaml --lint
       - run: sam build --template-file backend/template.yaml
 
+  aws_permissions_check:
+    name: Stage 1B - Read-only AWS TEST role verification
+    needs: validate
+    if: ${{ !inputs.deploy_test && inputs.confirmation == 'CHECK-AWS' && github.ref == 'refs/heads/feature/v2-live-scoring-foundation' }}
+    runs-on: ubuntu-latest
+    environment: sports-tracker-v2-test
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Verify dedicated role setting
+        env:
+          ROLE_ARN: ${{ vars.AWS_TEST_DEPLOY_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+          test "$ROLE_ARN" = "arn:aws:iam::814650855040:role/SportsTrackerV2TestGitHubDeploy"
+      - name: Assume GitHub TEST deployment role
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_TEST_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-2
+      - name: Check AWS identity and TEST resources (read-only)
+        run: |
+          set -euo pipefail
+          test "$(aws sts get-caller-identity --query Account --output text)" = "814650855040"
+          aws sts get-caller-identity --query '{Account:Account,Arn:Arn}' --output json
+          STATUS=$(aws cloudformation describe-stacks --region us-east-2 --stack-name sports-tracker-v2-test --query 'Stacks[0].StackStatus' --output text)
+          test "$STATUS" = "CREATE_COMPLETE" || test "$STATUS" = "UPDATE_COMPLETE"
+          ROLE=$(aws cloudformation describe-stacks --region us-east-2 --stack-name sports-tracker-v2-test --query 'Stacks[0].RoleARN' --output text)
+          test "$ROLE" = "None"
+          aws s3api head-bucket --bucket sports-tracker-v2-test-artifacts-814650855040-us-east-2
+          test "$(aws s3api get-bucket-location --bucket sports-tracker-v2-test-artifacts-814650855040-us-east-2 --query LocationConstraint --output text)" = "us-east-2"
+          echo "Read-only TEST role and resource checks passed. No deployment performed."
+
   deploy:
     name: Stage 2 - Approved TEST-only AWS deployment
     needs: validate
